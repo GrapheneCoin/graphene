@@ -41,7 +41,7 @@ static CBigNum bnProofOfStakeHardLimit(~uint256(0) >> 30);
 static CBigNum bnInitialHashTarget(~uint256(0) >> 20);
 unsigned int nStakeMinAge = 60 * 60 * 24 * 10; // minimum age for coin age
 unsigned int nStakeMaxAge = 60 * 60 * 24 * 30; // stake age of full weight
-unsigned int nStakeTargetSpacing = 1 * 60 * 2.5; // DIFF: 2.5-minute block spacing
+unsigned int nStakeTargetSpacing = 1 * 60 * 2.5; // DIFF: 15-minute block spacing
 int64 nChainStartTime = 1395744444;
 int nCoinbaseMaturity = 180;
 CBlockIndex* pindexGenesisBlock = NULL;
@@ -950,7 +950,7 @@ uint256 WantedByOrphan(const CBlock* pblockOrphan)
     return pblockOrphan->hashPrevBlock;
 }
 
-// graphene: increasing Nfactor gradually
+// cachecoin: increasing Nfactor gradually
 const unsigned char minNfactor = 4;
 const unsigned char maxNfactor = 30;
 
@@ -1013,7 +1013,8 @@ int64 GetProofOfWorkReward(unsigned int nBits)
     nSubsidy = (nSubsidy / CENT) * CENT;
     if (fDebug && GetBoolArg("-printcreation"))
         printf("GetProofOfWorkReward() : create=%s nBits=0x%08x nSubsidy=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nBits, nSubsidy);
-        return min(nSubsidy, MAX_MINT_PROOF_OF_WORK);
+
+    return min(nSubsidy, MAX_MINT_PROOF_OF_WORK);
 }
 
 // ppcoin: miner's coin stake is rewarded based on coin age spent (coin-days)
@@ -1024,14 +1025,17 @@ int64 GetProofOfStakeReward(int64 nCoinAge)
     if(fTestNet)
         nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
     else
-        nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
+        if(pindexBest->GetBlockTime() >= 1396569600)
+            nSubsidy = nCoinAge * 33 * nRewardCoinYear / (365 * 33 + 8);
+        else
+            nSubsidy = nCoinAge * 33 / (365 * 33 + 8) * nRewardCoinYear;
 
     if (fDebug && GetBoolArg("-printcreation"))
         printf("GetProofOfStakeReward(): create=%s nCoinAge=%"PRI64d"\n", FormatMoney(nSubsidy).c_str(), nCoinAge);
     return nSubsidy;
 }
 
-static const int64 nTargetTimespan =  10 * 24 * 60 * 60;  // 10 days
+static const int64 nTargetTimespan = 10 * 24 * 60 * 60;  // one week
 static const int64 nTargetSpacingWorkMax = 12 * nStakeTargetSpacing; // 2-hour
 
 //
@@ -1096,7 +1100,7 @@ unsigned int GetNextTargetRequired(const CBlockIndex* pindexLast, bool fProofOfS
     CBigNum bnNew;
     bnNew.SetCompact(pindexPrev->nBits);
     int64 nTargetSpacing;
-    if(pindexPrev->GetBlockTime() < 1395550000)
+    if(pindexPrev->GetBlockTime() < 1396569600)
         nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min(nTargetSpacingWorkMax, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
     else
         nTargetSpacing = fProofOfStake? nStakeTargetSpacing : min((int64) nStakeTargetSpacing*2, (int64) nStakeTargetSpacing * (1 + pindexLast->nHeight - pindexPrev->nHeight));
@@ -2529,14 +2533,12 @@ bool LoadBlockIndex(bool fAllowNew)
         // Genesis Block:
         // block.hashMerkleRoot == 2b345ac4d342b3498c1fc0fa023ce7ac9e1aa8ee34ae48c4ae1afd9c659bf921
         //CBlock(hash=00000c533a5cc534f30a, ver=1, hashPrevBlock=00000000000000000000, hashMerkleRoot=2b345ac4d3, nTime=1395744484, nBits=1e0fffff, nNonce=1388683, vtx=1, vchBlockSig=)
-        //  Coinbase(hash=2b345ac4d3, nTime=1395744444, ver=1, vin.size=1, vout.size=1, nLockTime=0)
-        //    CTxIn(COutPoint(0000000000, 4294967295), coinbase 04ffff001d020f27343235204d617220323031342c2030303a35362c2031353a31382c2030383a30392c2036392e392c203336392c3838322034312e39)
-        //    CTxOut(empty)
-        //  vMerkleTree: 2b345ac4d3 
+        // Coinbase(hash=2b345ac4d3, nTime=1395744444, ver=1, vin.size=1, vout.size=1, nLockTime=0)
+        // CTxIn(COutPoint(0000000000, 4294967295), coinbase 04ffff001d020f27343235204d617220323031342c2030303a35362c2031353a31382c2030383a30392c2036392e392c203336392c3838322034312e39)
+        // CTxOut(empty)
+        // vMerkleTree: 2b345ac4d3
         //block.GetHash() == 00000c533a5cc534f30ab13e6c5e34a320d811b6661a467829bde66ee495f12b
         //hashGenesisBlock == 0000000000000000000000000000000000000000000000000000000000000000
-
-
         // Genesis block
         const char* pszTimestamp = "25 Mar 2014, 00:56, 15:18, 08:09, 69.9, 369,882 41.9";
         CTransaction txNew;
@@ -2553,24 +2555,6 @@ bool LoadBlockIndex(bool fAllowNew)
         block.nTime    = 1395744484;
         block.nBits    = bnProofOfWorkLimit.GetCompact();
         block.nNonce   = 1388683;
-
-        if (false && (block.GetHash() != hashGenesisBlock)) {
-
-        //This will figure out a valid hash and Nonce if you're
-        //creating a different genesis block:
-        printf("trying out hashes\n");          
-            uint256 hashTarget = CBigNum().SetCompact(block.nBits).getuint256();
-            while (block.GetHash() > hashTarget)
-              {
-                   ++block.nNonce;
-                    printf("tried hash : ", block.nNonce, "\n");                
-                    if (block.nNonce == 0)
-                   {
-                       printf("NONCE WRAPPED, incrementing time");
-                       ++block.nTime;
-                   }
-               }
-        }
 
         //// debug print
         printf("block.GetHash() == %s\n", block.GetHash().ToString().c_str());
@@ -2926,7 +2910,14 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
             return false;
         }
         // Start disconnecting older client versions from Thu Jan 30 05:40:00 MSK 2014
-        badVersion = false;
+        if(currentTimestamp >= 1396569600)
+        {
+         if(pfrom->nVersion < NOBLKS2014_VERSION_END)
+             badVersion = true;
+        }
+        else if(currentTimestamp >= 1396569600)
+            if(pfrom->nVersion < NOBLKS2014_2_VERSION_END)
+                badVersion = true;
 
 
         if(badVersion)
@@ -3001,7 +2992,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
 
         // Ask the first connected node for block updates
         static int nAskedForBlocks = 0;
-        if(currentTimestamp < 1395744444)
+        if(currentTimestamp < 1396569600)
         {
             if (!pfrom->fClient && !pfrom->fOneShot &&
                 (pfrom->nStartingHeight > (nBestHeight - 144)) &&
@@ -3013,7 +3004,7 @@ bool static ProcessMessage(CNode* pfrom, string strCommand, CDataStream& vRecv)
                 pfrom->PushGetBlocks(pindexBest, uint256(0));
             }
         }
-        else if(currentTimestamp < 1395744444)
+        else if(currentTimestamp < 1396569600)
         {
             if (!pfrom->fClient && !pfrom->fOneShot &&
                 (pfrom->nStartingHeight > (nBestHeight - 144)) &&
